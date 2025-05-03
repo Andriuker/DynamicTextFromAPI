@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>HTTP Caller Settings</title>
+    <meta charset="utf-8" />
+    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
+    <link rel="stylesheet" href="pi.css">
+</head>
+<body>
+    <sdpi-item label="HTTP Method">
+        <sdpi-select setting="httpMethod" default="GET">
+            <option value="GET">GET</option>
+            <option value="POST">POST</option>
+            <option value="PUT">PUT</option>
+            <option value="DELETE">DELETE</option>
+            <option value="PATCH">PATCH</option>
+            </sdpi-select>
+    </sdpi-item>
+
+    <sdpi-item label="URL">
+        <sdpi-textfield setting="url" required placeholder="https://api.example.com/data"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Headers (JSON)">
+        <sdpi-textarea setting="headers" rows="4" placeholder='{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer YOUR_TOKEN"\n}'></sdpi-textarea>
+    </sdpi-item>
+
+    <sdpi-item label="Body (JSON/Text)">
+        <sdpi-textarea setting="body" rows="5" placeholder='{\n  "key": "value"\n}'></sdpi-textarea>
+    </sdpi-item>
+
+    <sdpi-item label="Response Path (Dot Notation)">
+        <sdpi-textfield setting="responsePath" placeholder="data.value[0].name"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Update Interval (seconds)">
+        <sdpi-textfield setting="updateInterval" type="number" min="0" step="1" default="0" placeholder="0 = Manual Only"></sdpi-textfield>
+    </sdpi-item>
+
+    <sdpi-item label="Enable Marquee for long text">
+         <sdpi-checkbox setting="marqueeEnabled" default="true"></sdpi-checkbox>
+    </sdpi-item>
+
+    <sdpi-item label="Show 'OK' on Press">
+        <sdpi-checkbox setting="showOkOnPress" default="false"></sdpi-checkbox>
+    </sdpi-item>
+
+    </body>
+</html>

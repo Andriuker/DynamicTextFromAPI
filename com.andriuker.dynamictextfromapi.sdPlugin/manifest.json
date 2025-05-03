@@ -1,0 +1,41 @@
+{
+    "Name": "DynamicTextFromAPI",
+    "Version": "0.9.1",
+    "Author": "Andriuker",
+    "Description": "Allows you to configure and execute HTTP requests from Stream Deck.",
+    "Icon": "imgs/plugin/marketplace",
+    "Category": "DynamicTextFromAPI",
+    "CategoryIcon": "imgs/plugin/category-icon",
+    "CodePath": "bin/plugin.js",
+    "SDKVersion": 2,
+    "Software": {
+        "MinimumVersion": "6.4"
+    },
+    "OS": [
+        { "Platform": "mac", "MinimumVersion": "12" },
+        { "Platform": "windows", "MinimumVersion": "10" }
+    ],
+    "Nodejs": {
+        "Version": "20",
+        "Debug": "enabled"
+    },
+    "UUID": "com.andriuker.dynamictextfromapi",
+    "Actions": [
+        {
+            "Name": "HTTP Caller",
+            "UUID": "com.andriuker.dynamictextfromapi.httpcaller",
+            "Icon": "imgs/actions/httpcaller/icon",
+            "Tooltip": "Makes a configurable HTTP request and displays part of the response.",
+            "PropertyInspectorPath": "ui/action-pi.html",
+            "Controllers": ["Keypad"],
+            "States": [
+                {
+                    "Image": "imgs/actions/httpcaller/key",
+                    "TitleAlignment": "middle",
+                    "FontSize": 10
+                }
+            ],
+            "UserTitleEnabled": false
+        }
+    ]
+}
