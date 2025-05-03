@@ -1,113 +1,115 @@
+**Read in other languages:** [Español](README_ES.md)
+
 # DynamicTextFromAPI - Stream Deck Plugin
 
-**Autor:** Andriuker
-**Versión:** 0.9.0
+**Author:** Andriuker
+**Version:** 0.9.0
 
-Un plugin para Elgato Stream Deck que te permite configurar y ejecutar peticiones HTTP (GET, POST, PUT, DELETE, PATCH) y mostrar datos dinámicos extraídos de la respuesta JSON directamente en el título de un botón.
+A plugin for Elgato Stream Deck that allows you to configure and execute HTTP requests (GET, POST, PUT, DELETE, PATCH) and display dynamic data extracted from the JSON response directly in a button's title.
 
 ![Screenshot](com.andriuker.dynamictextfromapi.sdPlugin/imgs/example.png)
 
-## Características Principales
+## Key Features
 
-* **Peticiones HTTP Flexibles:** Realiza llamadas a APIs usando los métodos GET, POST, PUT, DELETE y PATCH.
-* **Configuración Completa:** Define la URL del endpoint, los Headers (en formato JSON) y el Body (JSON o texto plano) de tu petición.
-* **Extracción de Datos:** Usa "dot notation" (ej: `data.usuario.nombre`, `items[0].valor`) para extraer fácilmente el dato específico que necesitas de la respuesta JSON.
-* **Título Dinámico:** Muestra el dato extraído directamente como título del botón del Stream Deck.
-* **Actualización Automática:** Configura un intervalo (en segundos) para que la petición se repita automáticamente y el título se mantenga actualizado. `0` para ejecución manual únicamente.
-* **Efecto Marquee (Scroll):** Si el texto extraído es muy largo, activa la opción "Marquee" para mostrarlo con una animación de desplazamiento horizontal.
-* **Feedback Visual (Opcional):** Habilita o deshabilita un checkmark verde (`✓`) temporal al presionar el botón manualmente.
-* **Word Wrap (Experimental):** Intenta dividir títulos largos en múltiples líneas (insertando `\n`) cuando el efecto Marquee está desactivado. *Nota: La efectividad depende del renderizado de Stream Deck.*
-* **Copiar al Portapapeles:** Mantén presionado el botón (~750ms) para copiar el texto actual del título directamente a tu portapapeles.
+* **Flexible HTTP Requests:** Make calls to APIs using GET, POST, PUT, DELETE, and PATCH methods.
+* **Comprehensive Configuration:** Define the endpoint URL, Headers (in JSON format), and Body (JSON or plain text) for your request.
+* **Data Extraction:** Use "dot notation" (e.g., `data.user.name`, `items[0].value`) to easily extract the specific data you need from the JSON response.
+* **Dynamic Title:** Display the extracted data directly as the Stream Deck button's title.
+* **Automatic Update:** Set an interval (in seconds) for the request to automatically repeat and keep the title updated. `0` means manual execution only.
+* **Marquee Effect (Scroll):** If the extracted text is too long, activate the "Marquee" option to display it with a horizontal scrolling animation.
+* **Visual Feedback (Optional):** Enable or disable a temporary green checkmark (`✓`) when manually pressing the button.
+* **Word Wrap (Experimental):** Attempts to split long titles into multiple lines (by inserting `\n`) when the Marquee effect is disabled. *Note: Effectiveness depends on Stream Deck's rendering.*
+* **Copy to Clipboard:** Long press the button (~750ms) to copy the current title text directly to your clipboard.
 
-## Instalación
+## Installation
 
-1.  Descarga la última versión del plugin desde la sección de [**Releases**](https://github.com/Andriuker/DynamicTextFromAPI/releases). Necesitarás el archivo con extensión `.streamDeckPlugin`.
-2.  Haz doble clic sobre el archivo descargado (`com.andriuker.dynamictextfromapi.streamDeckPlugin`).
-3.  El software de Stream Deck te preguntará si deseas instalar el plugin. Confirma la instalación.
+1.  Download the latest version of the plugin from the [**Releases**](https://github.com/Andriuker/DynamicTextFromAPI/releases) section. You will need the file with the `.streamDeckPlugin` extension.
+2.  Double-click on the downloaded file (`com.andriuker.dynamictextfromapi.streamDeckPlugin`).
+3.  The Stream Deck software will ask if you want to install the plugin. Confirm the installation.
 
-## Uso y Configuración
+## Usage and Configuration
 
-Una vez instalado, encontrarás una nueva acción llamada **"HTTP Caller"** en la lista de acciones del software Stream Deck, dentro de la categoría **"Dynamic Text From API"**.
+Once installed, you will find a new action called **"HTTP Caller"** in the list of actions within the Stream Deck software, under the **"Dynamic Text From API"** category.
 
-1.  Arrastra la acción "HTTP Caller" a un botón vacío en tu Stream Deck.
-2.  Selecciona el botón para ver el Panel de Propiedades (Property Inspector) y configura la petición:
+1.  Drag the "HTTP Caller" action onto an empty button on your Stream Deck.
+2.  Select the button to view the Property Inspector panel and configure the request:
 
     ![Property Inspector Screenshot](com.andriuker.dynamictextfromapi.sdPlugin/imgs/pi_screenshot_placeholder.png)
 
-    * **HTTP Method:** Selecciona el método HTTP para tu petición (GET, POST, PUT, DELETE, PATCH).
-    * **URL:** Introduce la URL completa del endpoint de la API a la que quieres llamar. Asegúrate de que sea válida.
-    * **Headers (JSON):** Introduce las cabeceras HTTP necesarias en formato JSON válido. Cada clave-valor representa una cabecera. Ejemplo:
+    * **HTTP Method:** Select the HTTP method for your request (GET, POST, PUT, DELETE, PATCH).
+    * **URL:** Enter the full URL of the API endpoint you want to call. Ensure it is valid.
+    * **Headers (JSON):** Enter the necessary HTTP headers in valid JSON format. Each key-value pair represents a header. Example:
         ```json
         {
           "Content-Type": "application/json",
-          "Authorization": "Bearer TU_TOKEN_SECRETO",
-          "X-Custom-Header": "Valor"
+          "Authorization": "Bearer YOUR_SECRET_TOKEN",
+          "X-Custom-Header": "Value"
         }
         ```
-        Si no necesitas cabeceras, déjalo vacío. Un JSON inválido mostrará "Header Err" en el botón.
-    * **Body (JSON/Text):** Introduce el cuerpo de la petición, necesario para métodos como POST, PUT, PATCH.
-        * Si la cabecera `Content-Type` es `application/json`, asegúrate de que el cuerpo sea un JSON válido. Un JSON inválido mostrará "Body Err".
-        * Para otros `Content-Type`, el cuerpo se tratará como texto plano.
-        * Déjalo vacío para GET/DELETE o si no se requiere cuerpo.
-    * **Response Path (Dot Notation):** Especifica la ruta para extraer el dato deseado de la respuesta JSON. Usa la notación de puntos para objetos anidados y corchetes para arrays. Ejemplos:
+        Leave it empty if no headers are needed. Invalid JSON will display "Header Err" on the button.
+    * **Body (JSON/Text):** Enter the request body, required for methods like POST, PUT, PATCH.
+        * If the `Content-Type` header is `application/json`, ensure the body is valid JSON. Invalid JSON will display "Body Err".
+        * For other `Content-Type`, the body will be treated as plain text.
+        * Leave it empty for GET/DELETE or if no body is required.
+    * **Response Path (Dot Notation):** Specify the path to extract the desired data from the JSON response. Use dot notation for nested objects and square brackets for arrays. Examples:
         * `data.value`
         * `results[0].name.first`
         * `ip`
-        * `user` (Si el valor es un objeto, se mostrará como JSON string: `{"id":1,...}`)
-        Si lo dejas vacío, el plugin intentará mostrar la respuesta completa (puede resultar en `[Object]`, texto largo o el valor directo si no es un objeto).
-    * **Update Interval (seconds):** El número de segundos entre cada ejecución automática de la petición. `0` deshabilita la actualización automática; la petición solo se ejecutará al presionar el botón.
-    * **Enable Marquee for long text:** Marca esta casilla si quieres que los textos que excedan aproximadamente 15 caracteres se muestren con una animación de desplazamiento horizontal (marquee).
-    * **Show 'OK' on Press:** Marca esta casilla para ver una confirmación visual rápida (checkmark verde `✓`) en el botón cada vez que lo presiones manualmente.
+        * `user` (If the value is an object, it will be displayed as a JSON string: `{"id":1,...}`)
+        If left empty, the plugin will attempt to display the full response (which may result in `[Object]`, long text, or the direct value if it's not an object).
+    * **Update Interval (seconds):** The number of seconds between each automatic request execution. `0` disables automatic updates; the request will only run when the button is pressed.
+    * **Enable Marquee for long text:** Check this box if you want texts exceeding approximately 15 characters to be displayed with a horizontal scrolling (marquee) animation.
+    * **Show 'OK' on Press:** Check this box to see a quick visual confirmation (green checkmark `✓`) on the button every time you press it manually.
 
-## Ejemplos Prácticos
+## Practical Examples
 
-**1. Mostrar IP Pública:**
+**1. Display Public IP:**
 
 * **Method:** `GET`
 * **URL:** `https://api.ipify.org?format=json`
-* **Headers:** (Vacío)
-* **Body:** (Vacío)
+* **Headers:** (Empty)
+* **Body:** (Empty)
 * **Response Path:** `ip`
-* **Update Interval:** `600` (Se actualiza cada 10 minutos)
-* **Resultado:** El botón mostrará tu dirección IP pública actual.
+* **Update Interval:** `600` (Updates every 10 minutes)
+* **Result:** The button will display your current public IP address.
 
-**2. Obtener Título de un Post (JSONPlaceholder):**
+**2. Get Post Title (JSONPlaceholder):**
 
 * **Method:** `GET`
 * **URL:** `https://jsonplaceholder.typicode.com/posts/1`
-* **Headers:** (Vacío)
-* **Body:** (Vacío)
+* **Headers:** (Empty)
+* **Body:** (Empty)
 * **Response Path:** `title`
-* **Update Interval:** `0` (Solo manual)
-* **Resultado:** El botón mostrará el título del post. Presiónalo para refrescar (aunque la data será la misma).
+* **Update Interval:** `0` (Manual only)
+* **Result:** The button will display the post title. Press it to refresh (though the data will be the same).
 
-**3. Enviar un POST simple (httpbin.org):**
+**3. Send a Simple POST (httpbin.org):**
 
 * **Method:** `POST`
 * **URL:** `https://httpbin.org/post`
 * **Headers:** `{"Content-Type": "application/json"}`
-* **Body:** `{"miDato": 123, "activo": true}`
-* **Response Path:** `json.miDato` (httpbin devuelve lo enviado dentro de una clave `json`)
+* **Body:** `{"myData": 123, "active": true}`
+* **Response Path:** `json.myData` (httpbin returns what was sent inside a `json` key)
 * **Update Interval:** `0`
-* **Resultado:** El botón debería mostrar `123` después de presionar.
+* **Result:** The button should display `123` after pressing.
 
-### Copiar Título al Portapapeles
+### Copy Title to Clipboard
 
-Si necesitas copiar rápidamente el valor que se muestra en el botón (por ejemplo, una IP, un ID, un nombre, etc.), simplemente **mantén presionado el botón** en tu Stream Deck durante aproximadamente 3/4 de segundo (750ms). El texto actual del título se copiará automáticamente a tu portapapeles.
+If you need to quickly copy the value displayed on the button (e.g., an IP, an ID, a name, etc.), simply **long-press the button** on your Stream Deck for approximately 3/4 of a second (750ms). The current title text will be automatically copied to your clipboard.
 
-## Notas y Limitaciones
+## Notes and Limitations
 
-* **Manejo de Errores:** El plugin muestra errores básicos en el título (`Req Error`, `Timeout`, `Net Error`, `Err [Código]`, `Header Err`, `Body Err`). Para detalles específicos, revisa los logs del plugin (habilita el modo debug en Stream Deck si es necesario).
-* **Validación JSON:** Asegúrate de que el JSON introducido en Headers y Body (cuando aplique) sea estrictamente válido. Puedes usar validadores online.
-* **Word Wrap (`\n`):** La función de ajuste de línea para textos largos sin marquee es experimental. Inserta `\n` basado en una estimación de caracteres (`CHARS_PER_LINE_ESTIMATE` en el código). Su apariencia final depende de cómo Stream Deck renderice estos caracteres y puede variar o no funcionar como se espera.
+* **Error Handling:** The plugin displays basic errors in the title (`Req Error`, `Timeout`, `Net Error`, `Err [Code]`, `Header Err`, `Body Err`). For specific details, check the plugin logs (enable debug mode in Stream Deck if needed).
+* **JSON Validation:** Ensure the JSON entered in Headers and Body (when applicable) is strictly valid. You can use online validators.
+* **Word Wrap (`\n`):** The line wrapping function for long texts without marquee is experimental. It inserts `\n` based on a character estimate (`CHARS_PER_LINE_ESTIMATE` in the code). Its final appearance depends on how Stream Deck renders these characters and may vary or not work as expected.
 
-* **Seguridad:** Evita introducir tokens de API muy sensibles directamente en el campo Headers si el perfil de Stream Deck pudiera ser compartido. Considera las implicaciones de seguridad al manejar APIs.
+* **Security:** Avoid entering highly sensitive API tokens directly in the Headers field if the Stream Deck profile might be shared. Consider security implications when dealing with APIs.
 
-## Soporte
+## Support
 
-Si encuentras algún problema, tienes sugerencias o quieres contribuir, por favor abre un [**Issue**](https://github.com/Andriuker/DynamicTextFromAPI/issues) en el repositorio de GitHub.
+If you encounter any issues, have suggestions, or want to contribute, please open an [**Issue**](https://github.com/Andriuker/DynamicTextFromAPI/issues) on the GitHub repository.
 
-## Licencia
+## License
 
 [MIT License](LICENSE.txt)
 
