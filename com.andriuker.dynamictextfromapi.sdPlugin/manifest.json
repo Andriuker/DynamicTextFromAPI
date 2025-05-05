@@ -1,42 +1,51 @@
 {
-    "Name": "DynamicTextFromAPI",
-    "Version": "0.9.0",
-    "Author": "Andriuker",
-    "Description": "Allows you to configure and execute HTTP requests from Stream Deck.",
-    "Icon": "imgs/plugin/marketplace",
-    "Category": "Dynamic Text From API",
-    "CategoryIcon": "imgs/plugin/category-icon",
-    "CodePath": "bin/plugin.js",
-    "PropertyInspectorPath": "ui/pi.html",
-    "SDKVersion": 2,
-    "Software": {
-        "MinimumVersion": "6.4"
-    },
-    "OS": [
-        { "Platform": "mac", "MinimumVersion": "12" },
-        { "Platform": "windows", "MinimumVersion": "10" }
-    ],
-    "Nodejs": {
-        "Version": "20",
-        "Debug": "enabled"
-    },
-    "UUID": "com.andriuker.dynamictextfromapi",
-    "Actions": [
-        {
-            "Name": "HTTP Caller",
-            "UUID": "com.andriuker.dynamictextfromapi.httpcaller",
-            "Icon": "imgs/actions/httpcaller/icon",
-            "Tooltip": "Makes a configurable HTTP request and displays part of the response.",
-            "PropertyInspectorPath": "ui/action-pi.html",
-            "Controllers": ["Keypad"],
-            "States": [
-                {
-                    "Image": "imgs/actions/httpcaller/key",
-                    "TitleAlignment": "middle",
-                    "FontSize": "10"
-                }
-            ],
-            "UserTitleEnabled": false
-        }
-    ]
+	"Actions": [
+		{
+			"Name": "HTTP Caller",
+			"UUID": "com.andriuker.dynamictextfromapi.httpcaller",
+			"Icon": "imgs/actions/httpcaller/icon",
+			"Tooltip": "Makes a configurable HTTP request and displays part of the response.",
+			"PropertyInspectorPath": "ui/action-pi.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/httpcaller/key",
+					"TitleAlignment": "middle",
+					"FontSize": 10
+				}
+			],
+			"UserTitleEnabled": false,
+			"SupportedInMultiActions": false
+		}
+	],
+	"Author": "Andriuker",
+	"Name": "DynamicTextFromAPI",
+	"Description": "Fetches data from an API via HTTP GET/POST/PUT/DELETE/PATCH and displays a selected part of the JSON response on a key.",
+	"Icon": "imgs/plugin/marketplace",
+	"URL": "https://github.com/Andriuker/DynamicTextFromAPI",
+	"Version": "0.9.1.0",
+	"SDKVersion": 2,
+	"Software": {
+		"MinimumVersion": "6.4"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Category": "Dynamic Text From API",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"CodePath": "bin/plugin.js",
+	"Nodejs": {
+		"Version": "20",
+		"Debug": "enabled"
+	},
+	"UUID": "com.andriuker.dynamictextfromapi"
 }

@@ -1,401 +1,666 @@
-import { spawn } from 'node:child_process'; // Usar 'node:' prefix es buena práctica
+import { spawn } from 'node:child_process'; // Use 'node:' prefix for clarity
 import process from 'node:process';
-// import clipboardy from 'clipboardy'; // Puedes comentarlo o eliminarlo si no lo usas como fallback
-import streamDeck from "@elgato/streamdeck"; // Para el logger
-// ... el resto de tus importaciones ...
-
+import streamDeck from "@elgato/streamdeck";
 import {
 	action,
 	KeyDownEvent,
-	KeyUpEvent, // <-- Importar KeyUpEvent
+	KeyUpEvent,
 	WillAppearEvent,
 	WillDisappearEvent,
 	DidReceiveSettingsEvent,
 	SingletonAction,
-	Action,
-	ActionContext
+	Action
 } from "@elgato/streamdeck";
-
 import axios, { AxiosRequestConfig, Method } from 'axios';
 import { get } from 'lodash';
 
-// --- Tipos y Constantes ---
+// --- Types and Constants ---
 
 type HttpCallerSettings = {
 	httpMethod?: Method;
 	url?: string;
-	headers?: string;
-	body?: string;
-	responsePath?: string;
-	updateInterval?: number;
+	headers?: string; // JSON string for headers
+	body?: string; // JSON or plain text body
+	responsePath?: string; // Dot notation path for response data
+	updateInterval?: number; // In seconds, 0 for manual
 	marqueeEnabled?: boolean;
 	showOkOnPress?: boolean;
 };
 
-// Estado específico de cada instancia de acción
+// State specific to each action instance
 type ActionInstanceState = {
 	intervalTimerId?: NodeJS.Timeout;
 	marqueeTimerId?: NodeJS.Timeout;
-	longPressTimerId?: NodeJS.Timeout; // <-- NUEVO: Timer para pulsación larga
+	longPressTimerId?: NodeJS.Timeout;
 	marqueeIntervalCounter: number;
-	fullTitle?: string;
+	fullTitle?: string; // The complete title before marquee/wrapping
 	marqueeOffset: number;
 };
 
-// Constantes
-const MARQUEE_UPDATE_INTERVAL_MS = 150;
-const MARQUEE_SCROLL_FACTOR = 2;
-const MAX_TITLE_LENGTH = 10;
-const CHARS_PER_LINE_ESTIMATE = 10;
-const LONG_PRESS_DURATION_MS = 750; // <-- NUEVO: Duración para considerar "larga" (ms)
+// Constants
+const MARQUEE_UPDATE_INTERVAL_MS = 150; // Update rate for marquee effect
+const MARQUEE_SCROLL_FACTOR = 2; // How many intervals before shifting text
+const MAX_TITLE_LENGTH = 10; // Approx max chars before marquee/wrapping kicks in
+const CHARS_PER_LINE_ESTIMATE = 10; // Estimate for experimental word wrap
+const LONG_PRESS_DURATION_MS = 750; // Duration for long press detection
 
-// --- Función Auxiliar para Word Wrap (sin cambios) ---
+// --- Helper Function: Word Wrap (Experimental) ---
+
+/**
+ * Attempts to wrap text by inserting newline characters based on estimated character width.
+ * Note: Effectiveness depends heavily on Stream Deck font rendering and may vary.
+ * @param text The text to wrap.
+ * @param maxCharsPerLine Estimated max characters per line.
+ * @returns Text with potential newlines inserted.
+ */
 function wrapText(text: string, maxCharsPerLine: number): string {
-	// ... (código de wrapText sin cambios)
 	const words = text.split(' ');
 	let currentLine = '';
 	const lines: string[] = [];
+
 	words.forEach(word => {
+		// If a single word is too long, put it on its own line (or handle smarter if needed)
 		if (word.length > maxCharsPerLine) {
-			if (currentLine.length > 0) lines.push(currentLine);
-			lines.push(word); currentLine = ''; return;
+			if (currentLine.length > 0) { lines.push(currentLine); }
+			lines.push(word);
+			currentLine = '';
+			return;
 		}
+
+		// Check if adding the word exceeds the line limit
 		const testLine = currentLine.length > 0 ? `${currentLine} ${word}` : word;
-		if (testLine.length <= maxCharsPerLine) { currentLine = testLine; }
-		else { lines.push(currentLine); currentLine = word; }
+		if (testLine.length <= maxCharsPerLine) {
+			currentLine = testLine; // Add word to current line
+		} else {
+			lines.push(currentLine); // Finalize current line
+			currentLine = word;      // Start new line with the current word
+		}
 	});
-	if (currentLine.length > 0) lines.push(currentLine);
+
+	// Add the last line if it has content
+	if (currentLine.length > 0) {
+		lines.push(currentLine);
+	}
+
 	return lines.join('\n');
 }
 
+// --- Action Class ---
 
-// --- Clase de la Acción ---
 @action({ UUID: "com.andriuker.dynamictextfromapi.httpcaller" })
 export class HttpCallerAction extends SingletonAction<HttpCallerSettings> {
 
+	// Stores the state (like timers and full title) for each instance of this action on the Stream Deck.
 	private instancesState = new Map<string, ActionInstanceState>();
 
-	// --- Manejadores de Eventos del SDK ---
+	// --- Stream Deck SDK Event Handlers ---
 
+	/**
+	 * Called when an instance of this action appears on the Stream Deck canvas
+	 * (e.g., profile switch, plugin start, folder navigation).
+	 * Initializes state, fetches initial data, and sets up timers.
+	 */
 	override async onWillAppear(ev: WillAppearEvent<HttpCallerSettings>): Promise<void> {
 		const instanceId = ev.action.id;
+		// Initialize state if it doesn't exist for this instance
 		if (!this.instancesState.has(instanceId)) {
-			streamDeck.logger.info(`[${instanceId}] Initializing state on WillAppear`);
+			streamDeck.logger.info(`[${instanceId}] Initializing new state on WillAppear.`);
 			this.instancesState.set(instanceId, {
 				marqueeIntervalCounter: 0,
 				marqueeOffset: 0,
 			});
 		} else {
-			streamDeck.logger.warn(`[${instanceId}] State already existed on WillAppear. Cleaning up previous timers.`);
+			// If state exists (rare, might happen on rapid profile switches?), clean up old timers first.
+			streamDeck.logger.warn(`[${instanceId}] State already existed on WillAppear. Cleaning up potentially orphaned timers.`);
 			const state = this.instancesState.get(instanceId)!;
-			clearTimeout(state.intervalTimerId);
-			clearTimeout(state.marqueeTimerId);
-			clearTimeout(state.longPressTimerId); // Limpiar también longPress
-			state.intervalTimerId = undefined;
-			state.marqueeTimerId = undefined;
-			state.longPressTimerId = undefined;
+			this.clearInstanceTimers(state, instanceId);
 		}
+
+		streamDeck.logger.debug(`[${instanceId}] WillAppear event. Current state map size: ${this.instancesState.size}`);
+		// Fetch data and update the title for the first time
 		await this.updateDataAndTitle(instanceId, ev.action, ev.payload.settings);
+		// Set up the automatic update interval timer based on settings
 		this.resetIntervalTimer(instanceId, ev.action, ev.payload.settings);
 	}
 
+	/**
+	 * Called when an instance of this action disappears from the Stream Deck canvas.
+	 * Cleans up timers and removes the instance state.
+	 */
 	override async onWillDisappear(ev: WillDisappearEvent<HttpCallerSettings>): Promise<void> {
 		const instanceId = ev.action.id;
-		streamDeck.logger.info(`[${instanceId}] Cleaning up on WillDisappear`);
+		streamDeck.logger.info(`[${instanceId}] Cleaning up timers and state on WillDisappear.`);
 		const state = this.instancesState.get(instanceId);
 		if (state) {
-			clearTimeout(state.intervalTimerId);
-			clearTimeout(state.marqueeTimerId);
-			clearTimeout(state.longPressTimerId); // <-- Limpiar timer de long press
-			this.instancesState.delete(instanceId);
-			streamDeck.logger.info(`[${instanceId}] State deleted. Map size: ${this.instancesState.size}`);
+			this.clearInstanceTimers(state, instanceId);
+			this.instancesState.delete(instanceId); // Remove state from map
+			streamDeck.logger.info(`[${instanceId}] State deleted. Remaining instances tracked: ${this.instancesState.size}`);
 		} else {
-			streamDeck.logger.warn(`[${instanceId}] State not found on WillDisappear.`);
+			streamDeck.logger.warn(`[${instanceId}] State not found on WillDisappear. Could not clean up timers.`);
 		}
 	}
 
+	/**
+	 * Called when the user presses the key down.
+	 * Handles both the primary action (fetching data) and initiating the long-press detection for clipboard copy.
+	 */
 	override async onKeyDown(ev: KeyDownEvent<HttpCallerSettings>): Promise<void> {
 		const instanceId = ev.action.id;
 		const state = this.instancesState.get(instanceId);
 
 		if (!state) {
-			streamDeck.logger.error(`[${instanceId}] State not found on KeyDown!`);
+			streamDeck.logger.error(`[${instanceId}] State not found on KeyDown! Cannot process press.`);
 			return;
 		}
 
-		// 1. Limpiar cualquier timer de long press anterior (seguridad)
+		// Clear any existing long press timer for this instance (safety check)
 		clearTimeout(state.longPressTimerId);
 		state.longPressTimerId = undefined;
 
-		// 2. Ejecutar acción principal (puede ser después del timer si prefieres)
-		// await this.updateDataAndTitle(instanceId, ev.action, ev.payload.settings); // Opcional: ejecutar antes o después de copiar
-
-		// 3. Iniciar temporizador para detectar pulsación larga
+		// Start a timer to detect if this press becomes a long press
 		state.longPressTimerId = setTimeout(async () => {
-			// --- Esto se ejecuta si se mantiene presionado ---
-			const currentState = this.instancesState.get(instanceId); // Volver a obtener estado
-			if (!currentState || !currentState.fullTitle) {
-				streamDeck.logger.warn(`[${instanceId}] Long press detected, but state or title is missing.`);
-				// Marcar timer como terminado aunque no hagamos nada
-				if (this.instancesState.has(instanceId)) { this.instancesState.get(instanceId)!.longPressTimerId = undefined; }
+			// This block executes ONLY if the key is held down for LONG_PRESS_DURATION_MS
+			const currentState = this.instancesState.get(instanceId); // Re-fetch state in case it changed
+			if (!currentState) {
+				streamDeck.logger.warn(`[${instanceId}] Long press detected, but state disappeared.`);
+				return;
+			}
+			if (!currentState.fullTitle) {
+				streamDeck.logger.warn(`[${instanceId}] Long press detected, but no title available to copy.`);
+				currentState.longPressTimerId = undefined; // Mark timer as finished
 				return;
 			}
 
 			const titleToCopy = currentState.fullTitle;
-			streamDeck.logger.info(`[${instanceId}] Long press detected. Attempting to copy: "${titleToCopy}"`);
+			streamDeck.logger.info(`[${instanceId}] Long press detected. Attempting to copy to clipboard: "${titleToCopy}"`);
+			this.copyToClipboard(titleToCopy, instanceId, ev.action); // Use helper function
 
-			try {
-				// Usar spawn para ejecutar comandos nativos
-				if (process.platform === 'win32') {
-					// --- Windows: usar clip.exe ---
-					const clip = spawn('clip', []); // Ejecutar 'clip.exe'
-					let errorData = '';
-					clip.stderr.on('data', (data) => { errorData += data; }); // Capturar errores de stderr
+			// Mark the long press timer as completed/handled
+			currentState.longPressTimerId = undefined;
 
-					// Promesa para esperar a que el proceso termine o falle
-					await new Promise<void>((resolve, reject) => {
-						clip.on('error', (err) => reject(new Error(`Failed to spawn 'clip': ${err.message}`))); // Error al iniciar
-						clip.on('close', (code) => { // Proceso terminado
-							if (code !== 0) {
-								reject(new Error(`'clip' command exited with code ${code}: ${errorData}`));
-							} else {
-								streamDeck.logger.info(`[${instanceId}] Text copied to clipboard via 'clip.exe'.`);
-								resolve();
-							}
-						});
-
-						// Escribir el texto en la entrada estándar del proceso clip
-						clip.stdin.write(titleToCopy);
-						clip.stdin.end(); // Cerrar stdin para que clip procese
-					});
-					// --- Fin Windows ---
-
-				} else if (process.platform === 'darwin') {
-					// --- macOS: usar pbcopy ---
-					const pbcopy = spawn('pbcopy', []); // Ejecutar 'pbcopy'
-					let errorData = '';
-					pbcopy.stderr.on('data', (data) => { errorData += data; });
-
-					await new Promise<void>((resolve, reject) => {
-						pbcopy.on('error', (err) => reject(new Error(`Failed to spawn 'pbcopy': ${err.message}`)));
-						pbcopy.on('close', (code) => {
-							if (code !== 0) {
-								reject(new Error(`'pbcopy' exited with code ${code}: ${errorData}`));
-							} else {
-								streamDeck.logger.info(`[${instanceId}] Text copied to clipboard via 'pbcopy'.`);
-								resolve();
-							}
-						});
-						pbcopy.stdin.write(titleToCopy);
-						pbcopy.stdin.end();
-					});
-					// --- Fin macOS ---
-
-				} else {
-					// --- Otras plataformas (Linux necesitaría xclip/xsel, etc.) ---
-					streamDeck.logger.warn(`[${instanceId}] Clipboard copy not implemented natively for platform: ${process.platform}. You might need 'xclip' or 'xsel' on Linux.`);
-					// Podrías intentar clipboardy aquí como fallback si lo dejas instalado
-					// await clipboardy.write(titleToCopy);
-					// streamDeck.logger.info(`[${instanceId}] Text copied via clipboardy (fallback).`);
-					throw new Error(`Unsupported platform for native clipboard copy: ${process.platform}`);
-				}
-
-			} catch (err: any) { // Capturar errores de spawn o promesas
-				streamDeck.logger.error(`[${instanceId}] Failed to copy text to clipboard:`, err.message);
-				// Mostrar alerta visual en el botón si es posible y es una tecla
-				if(ev.action && ev.action.isKey()) { // Necesitamos actionInstance aquí
-					try { await ev.action.showAlert(); } catch (e) {/* ignorar */ }
-				}
-			} finally {
-				// Marcar que el timer ya se ejecutó (o falló)
-				if (this.instancesState.has(instanceId)) {
-					this.instancesState.get(instanceId)!.longPressTimerId = undefined;
-				}
-			}
-			// --- Fin de la ejecución de pulsación larga ---
 		}, LONG_PRESS_DURATION_MS);
 
-		// Guardamos el ID del timer en el estado
-		this.instancesState.set(instanceId, state);
-
-		// 4. Ejecutar la acción principal AHORA si no lo hicimos antes
+		// Perform the main action immediately on key down (fetch data)
 		await this.updateDataAndTitle(instanceId, ev.action, ev.payload.settings);
 
-		// 5. Mostrar OK si está configurado (para pulsación corta)
-		// Esta lógica se ejecuta inmediatamente, el timer de long press sigue corriendo en paralelo.
-		// Si se suelta la tecla antes de LONG_PRESS_DURATION_MS, onKeyUp limpiará el timer.
-		const shouldShowOk = ev.payload.settings.showOkOnPress ?? true;
+		// Show the visual 'OK' feedback if enabled (for short press indication)
+		const shouldShowOk = ev.payload.settings.showOkOnPress ?? false; // Default to false if not set
 		if (shouldShowOk && ev.action.isKey()) {
-			await ev.action.showOk();
+			try {
+				await ev.action.showOk();
+			} catch (e) {
+				streamDeck.logger.warn(`[${instanceId}] Error showing OK feedback: ${e}`);
+			}
 		}
 	}
 
-	// --- NUEVO: Manejador onKeyUp ---
+	/**
+	 * Called when the user releases the key.
+	 * Used primarily to cancel the long-press timer if the key is released before the duration.
+	 */
 	override async onKeyUp(ev: KeyUpEvent<HttpCallerSettings>): Promise<void> {
 		const instanceId = ev.action.id;
 		const state = this.instancesState.get(instanceId);
 
 		if (state && state.longPressTimerId) {
-			// Si hay un timer de long press corriendo, cancelarlo porque la tecla se soltó
-			streamDeck.logger.debug(`[${instanceId}] KeyUp detected, clearing long press timer.`);
+			// If a long press timer is still running, it means it was a short press. Cancel the timer.
+			streamDeck.logger.debug(`[${instanceId}] KeyUp detected before long press duration. Clearing timer.`);
 			clearTimeout(state.longPressTimerId);
-			state.longPressTimerId = undefined; // Marcar como cancelado
-			// No es necesario volver a guardar el estado en el map aquí si solo limpiamos el timer
+			state.longPressTimerId = undefined; // Mark as cancelled/finished
+		} else if (state) {
+			// If no timer was running (either it fired or was already cleared), do nothing special on key up.
+			streamDeck.logger.debug(`[${instanceId}] KeyUp detected, no active long press timer found.`);
+		} else {
+			streamDeck.logger.warn(`[${instanceId}] KeyUp detected, but state not found.`);
 		}
 	}
 
+	/**
+	 * Called when the settings for an action instance are changed in the Property Inspector.
+	 * Re-fetches data and resets the interval timer with the new settings.
+	 */
 	override async onDidReceiveSettings(ev: DidReceiveSettingsEvent<HttpCallerSettings>): Promise<void> {
 		const instanceId = ev.action.id;
+		streamDeck.logger.info(`[${instanceId}] Settings received. Updating data and resetting timer.`);
+		// Fetch data immediately with new settings
 		await this.updateDataAndTitle(instanceId, ev.action, ev.payload.settings);
+		// Reset the interval timer based on the new settings
 		this.resetIntervalTimer(instanceId, ev.action, ev.payload.settings);
 	}
 
-	// --- Lógica Principal (sin cambios) ---
+	// --- Core Logic ---
+
+	/**
+	 * Fetches data from the configured URL, extracts the relevant part,
+	 * updates the key's title, and manages the marquee effect if necessary.
+	 * @param instanceId The unique ID of the action instance.
+	 * @param actionInstance The Action instance from the SDK event.
+	 * @param settings The current settings for this action instance.
+	 */
 	async updateDataAndTitle(instanceId: string, actionInstance: Action<HttpCallerSettings>, settings: HttpCallerSettings): Promise<void> {
-		// ... (código igual a la versión anterior)
 		const { httpMethod = 'GET', url, headers: headersJson, body: bodyString, responsePath, marqueeEnabled = true } = settings;
 		const state = this.instancesState.get(instanceId);
-		if (!state) { streamDeck.logger.error(`[${instanceId}] State not found in updateDataAndTitle!`); return; }
-		if (!actionInstance.isKey()) { streamDeck.logger.warn(`[${instanceId}] Action is not a Keypad action.`); return; }
-		if (!url) { await actionInstance.setTitle("No URL"); await actionInstance.showAlert(); return; }
-		let parsedHeaders: Record<string, string> = {};
-		try { if (headersJson) parsedHeaders = JSON.parse(headersJson); }
-		catch (e) { streamDeck.logger.error(`[${instanceId}] Error parsing headers JSON:`, e); await actionInstance.setTitle("Header Err"); await actionInstance.showAlert(); return; }
-		let requestBody: any = bodyString;
-		const contentType = Object.entries(parsedHeaders).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
-		if (contentType?.toLowerCase().includes('application/json') && bodyString) {
-			try { requestBody = JSON.parse(bodyString); }
-			catch (e) { streamDeck.logger.error(`[${instanceId}] Error parsing body JSON:`, e); await actionInstance.setTitle("Body Err"); await actionInstance.showAlert(); return; }
+
+		if (!state) {
+			streamDeck.logger.error(`[${instanceId}] State not found in updateDataAndTitle! Cannot update.`);
+			return; // Critical error, state should exist if called from lifecycle events
 		}
-		const config: AxiosRequestConfig = { method: httpMethod, url: url, headers: parsedHeaders, data: (httpMethod !== 'GET' && httpMethod !== 'DELETE') ? requestBody : undefined, timeout: 10000 };
+
+		// Ensure we are dealing with a physical key
+		if (!actionInstance.isKey()) {
+			streamDeck.logger.warn(`[${instanceId}] Attempted to update title on a non-key action type (${actionInstance.controllerType}). Skipping.`);
+			return;
+		}
+
+		// Validate essential settings
+		if (!url) {
+			streamDeck.logger.warn(`[${instanceId}] No URL configured.`);
+			await this.setTitleAndStopMarquee(instanceId, actionInstance, "No URL");
+			await actionInstance.showAlert();
+			return;
+		}
+
+		// Parse Headers safely
+		let parsedHeaders: Record<string, string> = {};
+		if (headersJson) {
+			try {
+				parsedHeaders = JSON.parse(headersJson);
+				if (typeof parsedHeaders !== 'object' || parsedHeaders === null || Array.isArray(parsedHeaders)) {
+					throw new Error("Headers must be a JSON object.");
+				}
+			} catch (e: any) {
+				streamDeck.logger.error(`[${instanceId}] Error parsing headers JSON: ${e.message}`);
+				await this.setTitleAndStopMarquee(instanceId, actionInstance, "Header Err");
+				await actionInstance.showAlert();
+				return;
+			}
+		}
+
+		// Parse Body safely if Content-Type is JSON
+		let requestBody: any = bodyString;
+		const contentTypeHeader = Object.entries(parsedHeaders).find(([key]) => key.toLowerCase() === 'content-type')?.[1];
+		if (contentTypeHeader?.toLowerCase().includes('application/json') && bodyString) {
+			try {
+				requestBody = JSON.parse(bodyString);
+			} catch (e: any) {
+				streamDeck.logger.error(`[${instanceId}] Error parsing body JSON: ${e.message}`);
+				await this.setTitleAndStopMarquee(instanceId, actionInstance, "Body Err");
+				await actionInstance.showAlert();
+				return;
+			}
+		}
+
+		// Prepare Axios request configuration
+		const config: AxiosRequestConfig = {
+			method: httpMethod,
+			url: url,
+			headers: parsedHeaders,
+			// Only include data for relevant methods
+			data: (httpMethod !== 'GET' && httpMethod !== 'DELETE' && requestBody) ? requestBody : undefined,
+			timeout: 10000, // 10 second timeout
+			// Prevent Axios from throwing on non-2xx status codes, so we can display the code
+			validateStatus: function (status) {
+				return status >= 100 && status < 600; // Accept almost any status code
+			}
+		};
+
+		// Execute HTTP request
 		try {
 			streamDeck.logger.info(`[${instanceId}] Making ${config.method} request to ${config.url}`);
 			const response = await axios(config);
-			streamDeck.logger.info(`[${instanceId}] Response Status:`, response.status);
-			let extractedData: any;
-			if (responsePath && response.data) extractedData = typeof response.data === 'object' ? get(response.data, responsePath) : response.data;
-			else extractedData = response.data;
-			let newTitle = "N/A";
-			if (extractedData !== undefined && extractedData !== null) newTitle = (typeof extractedData === 'object') ? JSON.stringify(extractedData) : String(extractedData);
-			streamDeck.logger.info(`[${instanceId}] Extracted Title:`, newTitle);
-			const previousFullTitle = state.fullTitle;
-			state.fullTitle = newTitle;
-			if (state.marqueeTimerId && previousFullTitle !== state.fullTitle) { this.stopMarquee(instanceId); }
-			if (marqueeEnabled && state.fullTitle.length > MAX_TITLE_LENGTH) {
-				if (!state.marqueeTimerId) { this.startMarquee(instanceId, actionInstance); }
-			} else {
-				this.stopMarquee(instanceId);
-				let titleToShow = state.fullTitle;
-				if (!marqueeEnabled && state.fullTitle.length > CHARS_PER_LINE_ESTIMATE) {
-					streamDeck.logger.info(`[${instanceId}] Wrapping title: ${state.fullTitle}`);
-					titleToShow = wrapText(state.fullTitle, CHARS_PER_LINE_ESTIMATE);
-					streamDeck.logger.info(`[${instanceId}] Wrapped title:\n${titleToShow}`);
+			streamDeck.logger.info(`[${instanceId}] Response Status: ${response.status}`);
+
+			// Check if the request was successful (2xx range) before extracting data
+			if (response.status >= 200 && response.status < 300) {
+				let extractedData: any;
+				// Extract data using lodash.get if a path is specified and data is an object/array
+				if (responsePath && typeof response.data === 'object' && response.data !== null) {
+					extractedData = get(response.data, responsePath);
+				} else if (responsePath && typeof response.data !== 'object') {
+					// If path is specified but data is not object/array, log warning and use raw data
+					streamDeck.logger.warn(`[${instanceId}] Response path specified, but response data is not an object/array. Using raw data. Data type: ${typeof response.data}`);
+					extractedData = response.data;
 				}
-				await actionInstance.setTitle(titleToShow);
+				else {
+					// No response path, use the whole data
+					extractedData = response.data;
+				}
+
+				let newTitle = "N/A"; // Default if extraction fails or data is null/undefined
+				if (extractedData !== undefined && extractedData !== null) {
+					// Convert objects/arrays to JSON string, otherwise use String representation
+					newTitle = (typeof extractedData === 'object') ? JSON.stringify(extractedData) : String(extractedData);
+				}
+
+				streamDeck.logger.info(`[${instanceId}] Extracted Title: "${newTitle}"`);
+				await this.setTitleAndManageMarquee(instanceId, actionInstance, newTitle, marqueeEnabled);
+
+			} else {
+				// Handle non-2xx status codes by showing the error code
+				streamDeck.logger.warn(`[${instanceId}] HTTP request returned non-success status: ${response.status}`);
+				const errorTitle = `Err ${response.status}`;
+				await this.setTitleAndStopMarquee(instanceId, actionInstance, errorTitle);
+				await actionInstance.showAlert();
 			}
+
 		} catch (error: any) {
+			// Handle network errors, timeouts, etc.
 			streamDeck.logger.error(`[${instanceId}] HTTP Request Failed:`, error.message);
-			let errorTitle = "Req Error";
+			let errorTitle = "Req Error"; // Generic default
 			if (axios.isAxiosError(error)) {
-				if (error.response) errorTitle = `Err ${error.response.status}`;
-				else if (error.code === 'ECONNABORTED') errorTitle = "Timeout";
-				else if (error.request) errorTitle = "Net Error";
+				// More specific error messages from Axios
+				if (error.response) {
+					// Error response received from server (e.g., 404, 500) - handled above now
+					// This part might be redundant if validateStatus handles it, but keep as fallback
+					errorTitle = `Err ${error.response.status}`;
+				} else if (error.code === 'ECONNABORTED') {
+					errorTitle = "Timeout";
+				} else if (error.request) {
+					// Network error (no response received)
+					errorTitle = "Net Error";
+				}
 			}
-			state.fullTitle = errorTitle;
-			this.stopMarquee(instanceId);
-			await actionInstance.setTitle(state.fullTitle);
+			// Update title with error and show alert
+			await this.setTitleAndStopMarquee(instanceId, actionInstance, errorTitle);
 			await actionInstance.showAlert();
 		}
 	}
 
-	// --- Gestión de Timers y Marquee (sin cambios en la lógica interna, solo usan instanceId) ---
+
+	// --- Timer and Marquee Management Helpers ---
+
+	/**
+	 * Clears and resets the automatic update interval timer for a specific instance.
+	 * @param instanceId The ID of the action instance.
+	 * @param actionInstance The Action instance.
+	 * @param settings The current settings containing the update interval.
+	 */
 	resetIntervalTimer(instanceId: string, actionInstance: Action<HttpCallerSettings>, settings: HttpCallerSettings): void {
 		const state = this.instancesState.get(instanceId);
-		if (!state) { streamDeck.logger.error(`[${instanceId}] State not found in resetIntervalTimer!`); return; }
+		if (!state) {
+			streamDeck.logger.error(`[${instanceId}] State not found in resetIntervalTimer!`);
+			return;
+		}
+
+		// Clear existing timer if any
 		clearTimeout(state.intervalTimerId);
 		state.intervalTimerId = undefined;
+
 		const intervalSeconds = settings.updateInterval ?? 0;
+
+		// Set a new timer only if interval is positive
 		if (intervalSeconds > 0) {
 			const intervalMilliseconds = intervalSeconds * 1000;
 			state.intervalTimerId = setTimeout(async () => {
+				// Check if the instance still exists when the timer fires
 				const currentState = this.instancesState.get(instanceId);
-				if (!currentState) { streamDeck.logger.info(`[${instanceId}] State disappeared before interval could run.`); return; }
+				if (!currentState) {
+					streamDeck.logger.info(`[${instanceId}] Interval fired, but instance state no longer exists. Stopping timer.`);
+					return;
+				}
+
 				streamDeck.logger.info(`[${instanceId}] Interval triggered: Updating data...`);
 				try {
+					// Re-fetch settings in case they changed while timer was pending
 					const currentSettings = await actionInstance.getSettings();
-					if (!this.instancesState.has(instanceId)) { streamDeck.logger.info(`[${instanceId}] State disappeared during getSettings.`); return; }
+					// Check again if state exists after await
+					if (!this.instancesState.has(instanceId)) {
+						streamDeck.logger.info(`[${instanceId}] State disappeared during interval's getSettings. Stopping timer.`);
+						return;
+					}
+					// Perform the update and reset the timer for the next interval
 					await this.updateDataAndTitle(instanceId, actionInstance, currentSettings);
 					this.resetIntervalTimer(instanceId, actionInstance, currentSettings);
-				} catch (err) {
-					streamDeck.logger.error(`[${instanceId}] Error getting settings or updating in interval:`, err);
-					if (this.instancesState.has(instanceId)) { this.instancesState.get(instanceId)!.intervalTimerId = undefined; }
+				} catch (err: any) {
+					streamDeck.logger.error(`[${instanceId}] Error getting settings or updating in interval: ${err.message}. Stopping timer.`);
+					// Ensure timer doesn't run again if update failed
+					if (this.instancesState.has(instanceId)) {
+						this.instancesState.get(instanceId)!.intervalTimerId = undefined;
+					}
 				}
 			}, intervalMilliseconds);
+
 			streamDeck.logger.info(`[${instanceId}] Interval timer SET for ${intervalSeconds} seconds.`);
 		} else {
-			streamDeck.logger.info(`[${instanceId}] Interval timer stopped (interval set to 0).`);
+			streamDeck.logger.info(`[${instanceId}] Interval timer disabled (interval is 0).`);
 		}
 	}
 
+	/**
+	 * Starts the marquee effect for a specific action instance's title.
+	 * @param instanceId The ID of the action instance.
+	 * @param actionInstance The Action instance.
+	 */
 	startMarquee(instanceId: string, actionInstance: Action<HttpCallerSettings>): void {
 		const state = this.instancesState.get(instanceId);
-		if (!state) { streamDeck.logger.error(`[${instanceId}] State not found in startMarquee!`); return; }
-		if (!actionInstance.isKey() || !state.fullTitle || state.fullTitle.length <= MAX_TITLE_LENGTH) {
-			this.stopMarquee(instanceId);
-			if (state.fullTitle && actionInstance.isKey()) actionInstance.setTitle(state.fullTitle);
+		if (!state) {
+			streamDeck.logger.error(`[${instanceId}] State not found in startMarquee!`);
 			return;
 		}
-		streamDeck.logger.info(`[${instanceId}] Starting marquee for:`, state.fullTitle);
+
+		// Ensure conditions for marquee are met
+		if (!actionInstance.isKey() || !state.fullTitle || state.fullTitle.length <= MAX_TITLE_LENGTH) {
+			streamDeck.logger.debug(`[${instanceId}] Marquee not needed or action is not a key. Stopping any existing marquee.`);
+			this.stopMarquee(instanceId); // Stop if running
+			// Set the static title if available
+			if (state.fullTitle && actionInstance.isKey()) {
+				actionInstance.setTitle(state.fullTitle);
+			}
+			return;
+		}
+
+		streamDeck.logger.info(`[${instanceId}] Starting marquee for title: "${state.fullTitle}"`);
 		state.marqueeOffset = 0;
 		state.marqueeIntervalCounter = 0;
+
+		// Function to perform a single step of the marquee animation
 		const stepMarquee = async () => {
-			const currentState = this.instancesState.get(instanceId);
+			const currentState = this.instancesState.get(instanceId); // Get fresh state
+
+			// Check if marquee should stop (state gone, timer changed, title too short)
 			if (!currentState || !currentState.marqueeTimerId || !currentState.fullTitle || currentState.fullTitle.length <= MAX_TITLE_LENGTH) {
-				streamDeck.logger.info(`[${instanceId}] Marquee stopping (state gone or title changed).`);
-				if (currentState) currentState.marqueeTimerId = undefined;
-				if (currentState?.fullTitle && actionInstance.isKey()) { try { await actionInstance.setTitle(currentState.fullTitle); } catch (e) { } }
-				return;
+				streamDeck.logger.info(`[${instanceId}] Marquee stopping (state missing, timer cleared, or title shortened).`);
+				if (currentState) currentState.marqueeTimerId = undefined; // Mark as stopped
+				// Restore full title if possible
+				if (currentState?.fullTitle && actionInstance.isKey()) {
+					try { await actionInstance.setTitle(currentState.fullTitle); } catch (e) { /* Ignore error setting title on stop */ }
+				}
+				return; // Stop recursion
 			}
+
+			// Increment counter and offset based on scroll factor
 			currentState.marqueeIntervalCounter++;
-			if (currentState.marqueeIntervalCounter % MARQUEE_SCROLL_FACTOR === 0) { currentState.marqueeOffset++; }
-			const paddedTitle = currentState.fullTitle + "  |  ";
+			if (currentState.marqueeIntervalCounter % MARQUEE_SCROLL_FACTOR === 0) {
+				currentState.marqueeOffset++;
+			}
+
+			// Prepare title for wrapping/scrolling
+			const paddedTitle = currentState.fullTitle + "  |  "; // Add padding for visual separation
 			const wrappedOffset = currentState.marqueeOffset % paddedTitle.length;
+
+			// Extract the portion of the text to display
 			const displayTitle = (paddedTitle + paddedTitle).substring(wrappedOffset, wrappedOffset + MAX_TITLE_LENGTH);
+
 			try {
-				if (actionInstance.isKey()) { await actionInstance.setTitle(displayTitle.trim()); }
+				if (actionInstance.isKey()) {
+					await actionInstance.setTitle(displayTitle.trim()); // Update the key title
+				}
+
+				// Check if the timer ID is still the same before scheduling the next step
+				// This prevents race conditions if stopMarquee was called concurrently
 				if (this.instancesState.get(instanceId)?.marqueeTimerId === state.marqueeTimerId) {
-					currentState.marqueeTimerId = setTimeout(stepMarquee, MARQUEE_UPDATE_INTERVAL_MS);
-				} else { streamDeck.logger.info(`[${instanceId}] Marquee timer ID changed or state deleted, stopping.`); }
-			} catch (err) {
-				streamDeck.logger.error(`[${instanceId}] Error setting title during marquee, stopping:`, err);
-				this.stopMarquee(instanceId);
+					currentState.marqueeTimerId = setTimeout(stepMarquee, MARQUEE_UPDATE_INTERVAL_MS); // Schedule next step
+				} else {
+					streamDeck.logger.info(`[${instanceId}] Marquee timer ID changed during step, stopping.`);
+				}
+			} catch (err: any) {
+				streamDeck.logger.error(`[${instanceId}] Error setting title during marquee step: ${err.message}. Stopping marquee.`);
+				this.stopMarquee(instanceId); // Stop marquee on error
 			}
 		};
+
+		// Clear any existing marquee timer and start the new one
 		clearTimeout(state.marqueeTimerId);
 		state.marqueeTimerId = setTimeout(stepMarquee, MARQUEE_UPDATE_INTERVAL_MS);
 	}
 
+	/**
+	 * Stops the marquee effect for a specific action instance.
+	 * @param instanceId The ID of the action instance.
+	 */
 	stopMarquee(instanceId: string): void {
 		const state = this.instancesState.get(instanceId);
 		if (state && state.marqueeTimerId) {
 			clearTimeout(state.marqueeTimerId);
-			state.marqueeTimerId = undefined;
+			state.marqueeTimerId = undefined; // Mark as stopped
 			streamDeck.logger.info(`[${instanceId}] Marquee timer stopped.`);
 		}
 	}
 
-	clearAllRunningTimers(): void {
-		streamDeck.logger.info("Clearing all known instance timers...");
-		this.instancesState.forEach((state, instanceId) => {
-			streamDeck.logger.info(`[${instanceId}] Clearing timers via clearAllRunningTimers`);
-			clearTimeout(state.intervalTimerId);
-			clearTimeout(state.marqueeTimerId);
-			clearTimeout(state.longPressTimerId); // Limpiar también longPress
-			state.intervalTimerId = undefined;
-			state.marqueeTimerId = undefined;
-			state.longPressTimerId = undefined;
-		});
-		streamDeck.logger.info("Finished clearing all known timers.");
+	/**
+	 * Helper to set the title and ensure any running marquee is stopped first.
+	 * @param instanceId Action instance ID.
+	 * @param actionInstance Action instance.
+	 * @param title The title to set.
+	 */
+	private async setTitleAndStopMarquee(instanceId: string, actionInstance: Action<HttpCallerSettings>, title: string): Promise<void> {
+		const state = this.instancesState.get(instanceId);
+		if (!state) return;
+
+		this.stopMarquee(instanceId); // Stop marquee first
+		state.fullTitle = title; // Update the stored full title
+		if (actionInstance.isKey()) {
+			await actionInstance.setTitle(title); // Set the static title
+		}
 	}
 
-} // Fin de la clase HttpCallerAction
+	/**
+	 * Helper to set the title and manage starting/stopping the marquee based on length and settings.
+	 * @param instanceId Action instance ID.
+	 * @param actionInstance Action instance.
+	 * @param newTitle The new full title.
+	 * @param marqueeEnabled Whether marquee is enabled in settings.
+	 */
+	private async setTitleAndManageMarquee(instanceId: string, actionInstance: Action<HttpCallerSettings>, newTitle: string, marqueeEnabled: boolean): Promise<void> {
+		const state = this.instancesState.get(instanceId);
+		if (!state || !actionInstance.isKey()) return;
+
+		const previousFullTitle = state.fullTitle;
+		state.fullTitle = newTitle; // Update full title
+
+		// Stop existing marquee if title changed
+		if (state.marqueeTimerId && previousFullTitle !== newTitle) {
+			this.stopMarquee(instanceId);
+		}
+
+		// Decide whether to start marquee or set static/wrapped title
+		if (marqueeEnabled && state.fullTitle.length > MAX_TITLE_LENGTH) {
+			if (!state.marqueeTimerId) { // Start only if not already running
+				this.startMarquee(instanceId, actionInstance);
+			}
+		} else {
+			// Title is short or marquee disabled, ensure marquee is stopped
+			this.stopMarquee(instanceId);
+			let titleToShow = state.fullTitle;
+			// Apply experimental wrapping if marquee is disabled and text is long
+			if (!marqueeEnabled && state.fullTitle.length > CHARS_PER_LINE_ESTIMATE) {
+				streamDeck.logger.info(`[${instanceId}] Wrapping title (experimental): ${state.fullTitle}`);
+				titleToShow = wrapText(state.fullTitle, CHARS_PER_LINE_ESTIMATE);
+				streamDeck.logger.info(`[${instanceId}] Wrapped title output:\n${titleToShow}`);
+			}
+			// Set the static (potentially wrapped) title
+			await actionInstance.setTitle(titleToShow);
+		}
+	}
+
+
+	/**
+	 * Clears all timers associated with a specific action instance state.
+	 * @param state The state object for the instance.
+	 * @param instanceId The ID for logging purposes.
+	 */
+	private clearInstanceTimers(state: ActionInstanceState, instanceId: string): void {
+		streamDeck.logger.debug(`[${instanceId}] Clearing timers for instance.`);
+		clearTimeout(state.intervalTimerId);
+		clearTimeout(state.marqueeTimerId);
+		clearTimeout(state.longPressTimerId);
+		state.intervalTimerId = undefined;
+		state.marqueeTimerId = undefined;
+		state.longPressTimerId = undefined;
+	}
+
+	/**
+	 * Attempts to copy the given text to the system clipboard using native commands.
+	 * @param textToCopy The text to copy.
+	 * @param instanceId The action instance ID for logging.
+	 * @param actionInstance The action instance for potential feedback.
+	 */
+	private async copyToClipboard(textToCopy: string, instanceId: string, actionInstance: Action<HttpCallerSettings>): Promise<void> {
+		let command: string;
+		let args: string[] = [];
+		let processName: string = '';
+
+		switch (process.platform) {
+			case 'win32':
+				command = 'clip'; // clip.exe should be in PATH
+				processName = 'clip.exe';
+				break;
+			case 'darwin':
+				command = 'pbcopy';
+				processName = 'pbcopy';
+				break;
+			// Add linux support if needed (requires checking for xclip/xsel)
+			// case 'linux':
+			//     command = 'xclip';
+			//     args = ['-selection', 'clipboard']; // Example args for xclip
+			//     processName = 'xclip';
+			// break;
+			default:
+				streamDeck.logger.warn(`[${instanceId}] Clipboard copy not implemented for platform: ${process.platform}.`);
+				if (actionInstance.isKey()) await actionInstance.showAlert();
+				return;
+		}
+
+		try {
+			const child = spawn(command, args);
+			let errorOutput = '';
+			let processExited = false; // Flag to prevent multiple rejections
+
+			child.stderr.on('data', (data) => { errorOutput += data; });
+
+			await new Promise<void>((resolve, reject) => {
+				child.on('error', (err) => {
+					if (!processExited) {
+						processExited = true;
+						reject(new Error(`Failed to spawn '${processName}': ${err.message}`));
+					}
+				});
+
+				child.on('close', (code) => {
+					if (!processExited) {
+						processExited = true;
+						if (code !== 0) {
+							reject(new Error(`'${processName}' exited with code ${code}: ${errorOutput}`));
+						} else {
+							streamDeck.logger.info(`[${instanceId}] Text copied to clipboard via '${processName}'.`);
+							resolve();
+						}
+					}
+				});
+
+				// Write the text to the process's standard input
+				child.stdin.write(textToCopy);
+				child.stdin.end(); // Close stdin to signal end of input
+			});
+
+			// Optional: Show OK feedback on successful copy
+			if (actionInstance.isKey()) await actionInstance.showOk();
+
+		} catch (err: any) {
+			streamDeck.logger.error(`[${instanceId}] Failed to copy text to clipboard: ${err.message}`);
+			if (actionInstance.isKey()) await actionInstance.showAlert();
+		}
+	}
+
+
+} // End of HttpCallerAction class

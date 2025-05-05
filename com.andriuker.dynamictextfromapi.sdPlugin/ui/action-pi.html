@@ -1,49 +1,58 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>HTTP Caller Settings</title>
-    <meta charset="utf-8" />
-    <script src="https://sdpi-components.dev/releases/v3/sdpi-components.js"></script>
-    <link rel="stylesheet" href="pi.css">
+	<title>HTTP Caller Settings</title>
+	<meta charset="utf-8" />
+	<script src="sdpi.components.js"></script>
 </head>
+
 <body>
-    <sdpi-item label="HTTP Method">
-        <sdpi-select setting="httpMethod" default="GET">
-            <option value="GET">GET</option>
-            <option value="POST">POST</option>
-            <option value="PUT">PUT</option>
-            <option value="DELETE">DELETE</option>
-            <option value="PATCH">PATCH</option>
-            </sdpi-select>
-    </sdpi-item>
+	<sdpi-item label="HTTP Method" title="Select the HTTP request method (GET, POST, etc.)">
+		<sdpi-select setting="httpMethod" default="GET">
+			<option value="GET">GET</option>
+			<option value="POST">POST</option>
+			<option value="PUT">PUT</option>
+			<option value="DELETE">DELETE</option>
+			<option value="PATCH">PATCH</option>
+		</sdpi-select>
+	</sdpi-item>
 
-    <sdpi-item label="URL">
-        <sdpi-textfield setting="url" required placeholder="https://api.example.com/data"></sdpi-textfield>
-    </sdpi-item>
+	<sdpi-item label="URL" title="Enter the full API endpoint URL (e.g., https://api.example.com/data)">
+		<sdpi-textfield setting="url" required placeholder="https://api.example.com/data"></sdpi-textfield>
+	</sdpi-item>
 
-    <sdpi-item label="Headers (JSON)">
-        <sdpi-textarea setting="headers" rows="4" placeholder='{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer YOUR_TOKEN"\n}'></sdpi-textarea>
-    </sdpi-item>
+	<sdpi-item label="Headers (JSON)"
+		title="Enter request headers in valid JSON format (e.g., {&quot;Content-Type&quot;: &quot;application/json&quot;})">
+		<sdpi-textarea setting="headers" rows="4"
+			placeholder='{\n  "Content-Type": "application/json",\n  "Authorization": "Bearer YOUR_TOKEN"\n}'></sdpi-textarea>
+	</sdpi-item>
 
-    <sdpi-item label="Body (JSON/Text)">
-        <sdpi-textarea setting="body" rows="5" placeholder='{\n  "key": "value"\n}'></sdpi-textarea>
-    </sdpi-item>
+	<sdpi-item label="Body (JSON/Text)"
+		title="Enter the request body (required for POST/PUT/PATCH). Use valid JSON if Content-Type is application/json.">
+		<sdpi-textarea setting="body" rows="5" placeholder='{\n  "key": "value"\n}'></sdpi-textarea>
+	</sdpi-item>
 
-    <sdpi-item label="Response Path (Dot Notation)">
-        <sdpi-textfield setting="responsePath" placeholder="data.value[0].name"></sdpi-textfield>
-    </sdpi-item>
+	<sdpi-item label="Response Path"
+		title="Dot notation or JSONPath to extract data from the JSON response (e.g., data.value[0].name)">
+		<sdpi-textfield setting="responsePath" placeholder="data.value[0].name"></sdpi-textfield>
+	</sdpi-item>
 
-    <sdpi-item label="Update Interval (seconds)">
-        <sdpi-textfield setting="updateInterval" type="number" min="0" step="1" default="0" placeholder="0 = Manual Only"></sdpi-textfield>
-    </sdpi-item>
+	<sdpi-item label="Update Interval (s)"
+		title="Seconds between automatic updates. Set to 0 for manual updates only (on key press).">
+		<sdpi-textfield setting="updateInterval" type="number" min="0" step="1" default="0"
+			placeholder="0 = Manual Only"></sdpi-textfield>
+	</sdpi-item>
 
-    <sdpi-item label="Enable Marquee for long text">
-         <sdpi-checkbox setting="marqueeEnabled" default="true"></sdpi-checkbox>
-    </sdpi-item>
+	<sdpi-item label="Enable Marquee" title="Scroll long text horizontally if it exceeds the key's display limit.">
+		<sdpi-checkbox setting="marqueeEnabled" default="true"></sdpi-checkbox>
+	</sdpi-item>
 
-    <sdpi-item label="Show 'OK' on Press">
-        <sdpi-checkbox setting="showOkOnPress" default="false"></sdpi-checkbox>
-    </sdpi-item>
+	<sdpi-item label="Show 'OK' on Press"
+		title="Display a temporary green checkmark (✓) on the key after a manual press.">
+		<sdpi-checkbox setting="showOkOnPress" default="false"></sdpi-checkbox>
+	</sdpi-item>
 
-    </body>
+</body>
+
 </html>
