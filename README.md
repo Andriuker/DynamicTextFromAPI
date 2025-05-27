@@ -2,8 +2,8 @@
 
 # DynamicTextFromAPI - Stream Deck Plugin
 
-**Author:** Andriuker
-**Version:** 0.9.1
+**Author:** Andriuker  
+**Version:** 0.10.0
 
 A plugin for Elgato Stream Deck that allows you to configure and execute HTTP requests (GET, POST, PUT, DELETE, PATCH) and display dynamic data extracted from the JSON response directly on a key's title.
 
@@ -49,9 +49,9 @@ Once installed, you will find a new action called **"HTTP Caller"** in the list 
         * If the `Content-Type` header is `application/json`, ensure the body is valid JSON. Invalid JSON will display "Body Err".
         * For other `Content-Type` values, the body will be treated as plain text.
         * Leave it empty for GET/DELETE or if no body is required.
-    * **Response Path (Dot Notation):** Specify the path to extract the desired data from the JSON response using dot notation for nested objects and square brackets for arrays (e.g., `data.value`, `results[0].name.first`, `ip`). You can also use more complex [JSONPath-Plus syntax](https://goessner.net/articles/JsonPath/).
+    * **Response Path (Dot Notation):** Specify the path to extract the desired data from the response. Use dot notation for JSON, XPath for XML.
         * If the value is an object or array, it will be displayed as a JSON string (e.g., `{"id":1,...}` or `[1,2,3]`).
-        * If left empty, the plugin will attempt to display the full response (which might result in `[Object]`, long text, or the direct value if it's not an object/array).
+        * If left empty, the plugin will attempt to display the full response.
     * **Update Interval (seconds):** The number of seconds between each automatic request execution. `0` disables automatic updates; the request will only run when the key is pressed. Minimum interval recommended is usually 5-10 seconds to avoid rate limiting.
     * **Enable Marquee for long text:** Check this box if you want texts exceeding approximately 10 characters to be displayed with a horizontal scrolling (marquee) animation.
     * **Show 'OK' on Press:** Check this box to see a quick visual confirmation (green checkmark `✓`) on the key every time you press it manually.
@@ -68,17 +68,27 @@ Once installed, you will find a new action called **"HTTP Caller"** in the list 
 * **Update Interval:** `600` (Updates every 10 minutes)
 * **Result:** The key will display your current public IP address.
 
-**2. Get Post Title (JSONPlaceholder):**
+**2. Parse XML Response (w3schools API):**
 
 * **Method:** `GET`
-* **URL:** `https://jsonplaceholder.typicode.com/posts/1`
+* **URL:** `https://www.w3schools.com/xml/note.xml`
 * **Headers:** (Empty)
 * **Body:** (Empty)
-* **Response Path:** `title`
-* **Update Interval:** `0` (Manual only)
-* **Result:** The key will display the post title. Press it to refresh (though the data will likely be the same).
+* **Response Path:** `//note/to`
+* **Update Interval:** `0`
+* **Result:** The key will display the value of the `<to>` element in the XML response (e.g., "Tove").
 
-**3. Send a Simple POST (httpbin.org):**
+**3. Extract Data from Plain Text:**
+
+* **Method:** `GET`
+* **URL:** `https://api.ipify.org/?format=plaintext`
+* **Headers:** (Empty)
+* **Body:** (Empty)
+* **Response Path:** `/\\d+/g`
+* **Update Interval:** `0`
+* **Result:** The key will display all numbers found in the response (e.g., "190217222135").
+
+**4. Send a Simple POST (httpbin.org):**
 
 * **Method:** `POST`
 * **URL:** `https://httpbin.org/post`
@@ -96,7 +106,7 @@ If you need to quickly copy the value displayed on the key (e.g., an IP, an ID, 
 
 * **Error Handling:** The plugin displays basic errors in the title (`Req Error`, `Timeout`, `Net Error`, `Err [Code]`, `Header Err`, `Body Err`). For specific details, check the plugin logs (enable debug mode in Stream Deck if needed: `streamdeck dev` via CLI).
 * **JSON Validation:** Ensure the JSON entered in Headers and Body (when applicable) is strictly valid. You can use online validators to check.
-* **Word Wrap (`\n`):** The line wrapping function for long texts without marquee is experimental. It inserts `\n` based on a character estimate (`CHARS_PER_LINE_ESTIMATE` in the code). Its final appearance depends on how Stream Deck renders these characters and may vary or not work as expected on all devices or title lengths.
+* **Plain Text Regex:** For plain text responses, you can use a regex pattern in the `Response Path` field to extract specific data.
 * **Security:** Avoid entering highly sensitive API tokens directly in the Headers field if the Stream Deck profile might be shared. Consider security implications when dealing with APIs. This plugin makes external network requests as configured by the user.
 
 ## Support
@@ -107,6 +117,8 @@ If you encounter any issues, have suggestions, or want to contribute, please ope
 
 [MIT License](LICENSE.txt)
 
+**Disclaimer:** This plugin is not affiliated with or endorsed by Elgato. Stream Deck is a trademark of Elgato.
+
 ---
 
 ## TO DO / Future Ideas
@@ -114,7 +126,9 @@ If you encounter any issues, have suggestions, or want to contribute, please ope
 Here's a list of planned features and improvements:
 
 ### Data Handling & Formatting
-- [ ] Add support for more response formats (XML via XPath, Plain Text/CSV via Regex/delimiters).
+- [x] Add support for more response formats (XML via XPath, Plain Text via Regex/delimiters).  
+  *Support for XML responses using XPath and plain text parsing via Regex has been implemented.*
+
 - [ ] Implement data formatting options (numbers, dates, prefix/suffix, length limit).
 - [ ] Improve display of object/array types (show `{...}` or `[...]` instead of `[Object]`).
 - [ ] Allow defining multiple response paths (e.g., for multi-line display or title/image separation).

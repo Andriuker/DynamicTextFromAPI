@@ -25,7 +25,7 @@
 	"Description": "Fetches data from an API via HTTP GET/POST/PUT/DELETE/PATCH and displays a selected part of the JSON response on a key.",
 	"Icon": "imgs/plugin/marketplace",
 	"URL": "https://github.com/Andriuker/DynamicTextFromAPI",
-	"Version": "0.9.1.0",
+	"Version": "0.10.0.0",
 	"SDKVersion": 2,
 	"Software": {
 		"MinimumVersion": "6.4"

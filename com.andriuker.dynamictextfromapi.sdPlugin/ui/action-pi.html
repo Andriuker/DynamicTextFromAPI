@@ -33,9 +33,9 @@
 		<sdpi-textarea setting="body" rows="5" placeholder='{\n  "key": "value"\n}'></sdpi-textarea>
 	</sdpi-item>
 
-	<sdpi-item label="Response Path"
-		title="Dot notation or JSONPath to extract data from the JSON response (e.g., data.value[0].name)">
-		<sdpi-textfield setting="responsePath" placeholder="data.value[0].name"></sdpi-textfield>
+	<sdpi-item label="Response Path (Dot Notation / XPath)"
+		title="Specify the path to extract data from the response. Use dot notation for JSON or XPath for XML.">
+		<sdpi-textfield setting="responsePath" placeholder="data.value[0].name or //item/name"></sdpi-textfield>
 	</sdpi-item>
 
 	<sdpi-item label="Update Interval (s)"
@@ -52,7 +52,6 @@
 		title="Display a temporary green checkmark (✓) on the key after a manual press.">
 		<sdpi-checkbox setting="showOkOnPress" default="false"></sdpi-checkbox>
 	</sdpi-item>
-
 </body>
 
 </html>

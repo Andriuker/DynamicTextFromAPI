@@ -13,6 +13,8 @@ import {
 } from "@elgato/streamdeck";
 import axios, { AxiosRequestConfig, Method } from 'axios';
 import { get } from 'lodash';
+import { DOMParser } from 'xmldom'; // Ensure xmldom is installed: npm install xmldom
+import xpath from 'xpath'; // Ensure xpath is installed: npm install xpath
 
 // --- Types and Constants ---
 
@@ -248,19 +250,11 @@ export class HttpCallerAction extends SingletonAction<HttpCallerSettings> {
 
 		// Ensure we are dealing with a physical key
 		if (!actionInstance.isKey()) {
-			streamDeck.logger.warn(`[${instanceId}] Attempted to update title on a non-key action type (${actionInstance.controllerType}). Skipping.`);
+			streamDeck.logger.warn(`[${instanceId}] Action is not a key. Skipping update.`);
 			return;
 		}
 
-		// Validate essential settings
-		if (!url) {
-			streamDeck.logger.warn(`[${instanceId}] No URL configured.`);
-			await this.setTitleAndStopMarquee(instanceId, actionInstance, "No URL");
-			await actionInstance.showAlert();
-			return;
-		}
-
-		// Parse Headers safely
+		// Parse headers safely
 		let parsedHeaders: Record<string, string> = {};
 		if (headersJson) {
 			try {
@@ -295,72 +289,101 @@ export class HttpCallerAction extends SingletonAction<HttpCallerSettings> {
 			method: httpMethod,
 			url: url,
 			headers: parsedHeaders,
-			// Only include data for relevant methods
 			data: (httpMethod !== 'GET' && httpMethod !== 'DELETE' && requestBody) ? requestBody : undefined,
 			timeout: 10000, // 10 second timeout
-			// Prevent Axios from throwing on non-2xx status codes, so we can display the code
 			validateStatus: function (status) {
 				return status >= 100 && status < 600; // Accept almost any status code
 			}
 		};
 
-		// Execute HTTP request
 		try {
 			streamDeck.logger.info(`[${instanceId}] Making ${config.method} request to ${config.url}`);
 			const response = await axios(config);
 			streamDeck.logger.info(`[${instanceId}] Response Status: ${response.status}`);
 
-			// Check if the request was successful (2xx range) before extracting data
-			if (response.status >= 200 && response.status < 300) {
-				let extractedData: any;
-				// Extract data using lodash.get if a path is specified and data is an object/array
-				if (responsePath && typeof response.data === 'object' && response.data !== null) {
-					extractedData = get(response.data, responsePath);
-				} else if (responsePath && typeof response.data !== 'object') {
-					// If path is specified but data is not object/array, log warning and use raw data
-					streamDeck.logger.warn(`[${instanceId}] Response path specified, but response data is not an object/array. Using raw data. Data type: ${typeof response.data}`);
-					extractedData = response.data;
-				}
-				else {
-					// No response path, use the whole data
-					extractedData = response.data;
-				}
+			let extractedData: any;
 
-				let newTitle = "N/A"; // Default if extraction fails or data is null/undefined
-				if (extractedData !== undefined && extractedData !== null) {
-					// Convert objects/arrays to JSON string, otherwise use String representation
-					newTitle = (typeof extractedData === 'object') ? JSON.stringify(extractedData) : String(extractedData);
-				}
-
-				streamDeck.logger.info(`[${instanceId}] Extracted Title: "${newTitle}"`);
-				await this.setTitleAndManageMarquee(instanceId, actionInstance, newTitle, marqueeEnabled);
-
-			} else {
-				// Handle non-2xx status codes by showing the error code
-				streamDeck.logger.warn(`[${instanceId}] HTTP request returned non-success status: ${response.status}`);
-				const errorTitle = `Err ${response.status}`;
-				await this.setTitleAndStopMarquee(instanceId, actionInstance, errorTitle);
-				await actionInstance.showAlert();
+			// Always process JSON
+			if (typeof response.data === 'object' && response.data !== null) {
+				extractedData = responsePath ? get(response.data, responsePath) : response.data;
 			}
 
+			// Always process XML
+			if (!extractedData && typeof response.data === 'string' && response.data.trim().startsWith('<')) {
+				try {
+					const doc = new DOMParser().parseFromString(response.data, 'text/xml');
+					if (responsePath) {
+						const nodes = xpath.select(responsePath, doc) as Node[];
+						extractedData = nodes.length > 0 ? nodes[0].textContent ?? "No Match" : "No Match";
+						streamDeck.logger.debug(`[${instanceId}] XPath nodes found: ${nodes.length}`);
+					} else {
+						extractedData = response.data;
+					}
+				} catch (error: any) {
+					streamDeck.logger.error(`[${instanceId}] Error processing XPath: ${error.message}`);
+					extractedData = "XML Parse Err";
+				}
+			}
+
+			// Always process regex for plain text
+			if (!extractedData && typeof response.data === 'string') {
+				try {
+					if (responsePath) {
+						streamDeck.logger.debug(`[${instanceId}] Attempting to process regex: "${responsePath}" on response data.`);
+						
+						// Validar y extraer patrón y flags de la expresión regular
+						const regexParts = responsePath.match(/^\/(.+)\/([gimsuy]*)$/);
+						if (regexParts) {
+							const [, pattern, flags] = regexParts;
+							const regex = new RegExp(pattern, flags); // Crear regex con flags extraídos
+							streamDeck.logger.debug(`[${instanceId}] Regex created successfully. Global: ${regex.global}`);
+							
+							// Procesar coincidencias
+							const matches = response.data.match(regex);
+							if (matches) {
+								extractedData = regex.global ? matches.join('') : matches[0];
+								streamDeck.logger.debug(`[${instanceId}] Matches found: ${matches}`);
+							} else {
+								extractedData = "No Match";
+								streamDeck.logger.debug(`[${instanceId}] No matches found for regex.`);
+							}
+						} else {
+							streamDeck.logger.error(`[${instanceId}] Invalid regex format: "${responsePath}".`);
+							extractedData = "Regex Err";
+						}
+					} else {
+						// Si no se proporciona regex, devolver la respuesta completa
+						streamDeck.logger.debug(`[${instanceId}] No regex provided. Returning full response data.`);
+						extractedData = response.data;
+					}
+				} catch (error: any) {
+					streamDeck.logger.error(`[${instanceId}] Error processing regex: ${error.message}`);
+					extractedData = "Regex Err";
+				}
+			}
+
+			// Log the final extracted data
+			streamDeck.logger.info(`[${instanceId}] Final extracted data: "${extractedData}"`);
+
+			let newTitle = extractedData !== undefined && extractedData !== null
+				? (typeof extractedData === 'object' ? JSON.stringify(extractedData) : String(extractedData))
+				: "N/A";
+
+			streamDeck.logger.info(`[${instanceId}] Extracted Title: "${newTitle}"`);
+			await this.setTitleAndManageMarquee(instanceId, actionInstance, newTitle, marqueeEnabled);
+
 		} catch (error: any) {
-			// Handle network errors, timeouts, etc.
 			streamDeck.logger.error(`[${instanceId}] HTTP Request Failed:`, error.message);
-			let errorTitle = "Req Error"; // Generic default
+			let errorTitle = "Req Error";
 			if (axios.isAxiosError(error)) {
-				// More specific error messages from Axios
 				if (error.response) {
-					// Error response received from server (e.g., 404, 500) - handled above now
-					// This part might be redundant if validateStatus handles it, but keep as fallback
 					errorTitle = `Err ${error.response.status}`;
 				} else if (error.code === 'ECONNABORTED') {
 					errorTitle = "Timeout";
 				} else if (error.request) {
-					// Network error (no response received)
 					errorTitle = "Net Error";
 				}
 			}
-			// Update title with error and show alert
 			await this.setTitleAndStopMarquee(instanceId, actionInstance, errorTitle);
 			await actionInstance.showAlert();
 		}

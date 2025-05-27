@@ -2,8 +2,8 @@
 
 # DynamicTextFromAPI - Plugin de Stream Deck
 
-**Autor:** Andriuker
-**Versión:** 0.9.1
+**Autor:** Andriuker  
+**Versión:** 0.10.0
 
 Un plugin para Elgato Stream Deck que te permite configurar y ejecutar peticiones HTTP (GET, POST, PUT, DELETE, PATCH) y mostrar datos dinámicos extraídos de la respuesta JSON directamente en el título de una tecla.
 
@@ -49,9 +49,9 @@ Una vez instalado, encontrarás una nueva acción llamada **"HTTP Caller"** en l
         * Si la cabecera `Content-Type` es `application/json`, asegúrate de que el cuerpo sea un JSON válido. Un JSON inválido mostrará "Body Err".
         * Para otros `Content-Type`, el cuerpo se tratará como texto plano.
         * Déjalo vacío para GET/DELETE o si no se requiere cuerpo.
-    * **Response Path (Dot Notation):** Especifica la ruta para extraer el dato deseado de la respuesta JSON. Usa la notación de puntos para objetos anidados y corchetes para arrays (ej: `data.value`, `results[0].name.first`, `ip`). También puedes usar sintaxis más compleja de [JSONPath-Plus](https://goessner.net/articles/JsonPath/).
-        * Si el valor es un objeto o array, se mostrará como un string JSON (ej: `{"id":1,...}` o `[1,2,3]`).
-        * Si lo dejas vacío, el plugin intentará mostrar la respuesta completa (puede resultar en `[Object]`, texto largo o el valor directo si no es un objeto/array).
+    * **Response Path (Dot Notation):** Especifica la ruta para extraer el dato deseado de la respuesta. Usa la notación de puntos para JSON o XPath para XML.
+	* Si el valor es un objeto o array, se mostrará como un string JSON (ej: `{"id":1,...}` o `[1,2,3]`).
+	* Si lo dejas vacío, el plugin intentará mostrar la respuesta completa.
     * **Update Interval (seconds):** El número de segundos entre cada ejecución automática de la petición. `0` deshabilita la actualización automática; la petición solo se ejecutará al presionar la tecla. Un intervalo mínimo recomendado suele ser 5-10 segundos para evitar límites de tasa (rate limiting).
     * **Enable Marquee for long text:** Marca esta casilla si quieres que los textos que excedan aproximadamente 10 caracteres se muestren con una animación de desplazamiento horizontal (marquesina).
     * **Show 'OK' on Press:** Marca esta casilla para ver una confirmación visual rápida (checkmark verde `✓`) en la tecla cada vez que la presiones manualmente.
@@ -68,17 +68,27 @@ Una vez instalado, encontrarás una nueva acción llamada **"HTTP Caller"** en l
 * **Update Interval:** `600` (Se actualiza cada 10 minutos)
 * **Resultado:** La tecla mostrará tu dirección IP pública actual.
 
-**2. Obtener Título de un Post (JSONPlaceholder):**
+**2. Analizar Respuesta XML (w3schools API):**
 
 * **Method:** `GET`
-* **URL:** `https://jsonplaceholder.typicode.com/posts/1`
+* **URL:** `https://www.w3schools.com/xml/note.xml`
 * **Headers:** (Vacío)
 * **Body:** (Vacío)
-* **Response Path:** `title`
-* **Update Interval:** `0` (Solo manual)
-* **Resultado:** La tecla mostrará el título del post. Presiónala para refrescar (aunque la data probablemente será la misma).
+* **Response Path:** `//note/to`
+* **Update Interval:** `0`
+* **Resultado:** La tecla mostrará el valor del elemento `<to>` en la respuesta XML (ej., "Tove").
 
-**3. Enviar un POST simple (httpbin.org):**
+**3. Extraer Datos de Texto Plano:**
+
+* **Method:** `GET`
+* **URL:** `https://api.ipify.org/?format=plaintext`
+* **Headers:** (Vacío)
+* **Body:** (Vacío)
+* **Response Path:** `/\\d+/g`
+* **Update Interval:** `0`
+* **Resultado:** La tecla mostrará todos los números encontrados en la respuesta (ej., "190217222135").
+
+**4. Enviar un POST simple (httpbin.org):**
 
 * **Method:** `POST`
 * **URL:** `https://httpbin.org/post`
@@ -96,7 +106,7 @@ Si necesitas copiar rápidamente el valor que se muestra en la tecla (por ejempl
 
 * **Manejo de Errores:** El plugin muestra errores básicos en el título (`Req Error`, `Timeout`, `Net Error`, `Err [Código]`, `Header Err`, `Body Err`). Para detalles específicos, revisa los logs del plugin (habilita el modo debug en Stream Deck si es necesario: `streamdeck dev` vía CLI).
 * **Validación JSON:** Asegúrate de que el JSON introducido en Headers y Body (cuando aplique) sea estrictamente válido. Puedes usar validadores online para verificarlo.
-* **Word Wrap (`\n`):** La función de ajuste de línea para textos largos sin marquesina es experimental. Inserta `\n` basado en una estimación de caracteres (`CHARS_PER_LINE_ESTIMATE` en el código). Su apariencia final depende de cómo Stream Deck renderice estos caracteres y puede variar o no funcionar como se espera en todos los dispositivos o longitudes de título.
+* **Regex en Texto Plano:** Para respuestas en texto plano, puedes usar un patrón regex en el campo `Response Path` para extraer datos específicos.
 * **Seguridad:** Evita introducir tokens de API muy sensibles directamente en el campo Headers si el perfil de Stream Deck pudiera ser compartido. Considera las implicaciones de seguridad al manejar APIs. Este plugin realiza peticiones de red externas según la configuración del usuario.
 
 ## Soporte
@@ -107,14 +117,16 @@ Si encuentras algún problema, tienes sugerencias o quieres contribuir, por favo
 
 [MIT License](LICENSE.txt)
 
+**Descargo de responsabilidad:** Este plugin no está afiliado ni respaldado por Elgato. Stream Deck es una marca registrada de Elgato.
+
 ---
 
 ## TO DO / Tareas Pendientes
 
-Aquí hay una lista de características y mejoras planificadas:
-
 ### Manejo de Datos y Formato
-- [ ] Añadir soporte para más formatos de respuesta (XML vía XPath, Texto Plano/CSV vía Regex/delimitadores).
+- [x] Añadir soporte para más formatos de respuesta (XML vía XPath, Texto Plano vía Regex/delimitadores).  
+  *Se ha implementado soporte para respuestas XML usando XPath y análisis de texto plano mediante Regex.*
+
 - [ ] Implementar opciones de formateo de datos (números, fechas, prefijo/sufijo, límite de longitud).
 - [ ] Mejorar la visualización de tipos objeto/array (mostrar `{...}` o `[...]` en lugar de `[Object]`).
 - [ ] Permitir definir múltiples rutas de respuesta (ej., para visualización multilínea o separación título/imagen).
