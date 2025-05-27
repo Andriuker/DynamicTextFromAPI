@@ -19,7 +19,7 @@ import xpath from 'xpath'; // Ensure xpath is installed: npm install xpath
 
 // --- Types and Constants ---
 
-type HttpCallerSettings = {
+export type HttpCallerSettings = {
 	httpMethod?: Method;
 	url?: string;
 	headers?: string; // JSON string for headers
@@ -246,15 +246,17 @@ export class HttpCallerAction extends SingletonAction<HttpCallerSettings> {
 	 * Handles messages sent from the Property Inspector.
 	 * Specifically listens for 'runTestRequest' to test current settings.
 	 */
-	public async onSendToPlugin(ev: SendToPluginEvent<HttpCallerSettings, { event?: string }>): Promise<void> {
-		if (ev.payload.payload?.event === 'runTestRequest') {
+	public override async onSendToPlugin(ev: SendToPluginEvent<HttpCallerSettings, { event?: string }>): Promise<void> {
+		if (ev.payload?.event === 'runTestRequest') {
 			const instanceId = ev.action.id;
 			streamDeck.logger.info(`[${instanceId}] Received 'runTestRequest' from PI.`);
 
 			// Get current settings for this action instance.
 			// Note: PI usually sends current settings, but for a test, we might want the *saved* settings.
 			// However, getSettings() should reflect what's saved for the instance.
-			const currentSettings = await ev.action.getSettings();
+			// Explicitly cast ev.action to Action<HttpCallerSettings> to resolve type inference issues.
+			const typedAction = ev.action as Action<HttpCallerSettings>;
+			const currentSettings = await typedAction.getSettings();
 
 			// Execute the request using the new private method
 			const result = await this._executeRequest(currentSettings, instanceId);
@@ -271,7 +273,7 @@ export class HttpCallerAction extends SingletonAction<HttpCallerSettings> {
 			}
 			
 			streamDeck.logger.info(`[${instanceId}] Sending test result to PI: ${JSON.stringify(piResultPayload)}`);
-			await ev.action.sendToPropertyInspector(piResultPayload);
+			await typedAction.sendToPropertyInspector(piResultPayload);
 		}
 	}
 
