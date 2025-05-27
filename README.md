@@ -55,6 +55,11 @@ Once installed, you will find a new action called **"HTTP Caller"** in the list 
     * **Update Interval (seconds):** The number of seconds between each automatic request execution. `0` disables automatic updates; the request will only run when the key is pressed. Minimum interval recommended is usually 5-10 seconds to avoid rate limiting.
     * **Enable Marquee for long text:** Check this box if you want texts exceeding approximately 10 characters to be displayed with a horizontal scrolling (marquee) animation.
     * **Show 'OK' on Press:** Check this box to see a quick visual confirmation (green checkmark `✓`) on the key every time you press it manually.
+    * **Test Request Button:** Below the configuration options in the Property Inspector, you'll find a "Test Request" button.
+        * Clicking this button will immediately execute the HTTP request using the current settings entered in the fields above (URL, Method, Headers, Body, Response Path).
+        * The result of this test request (either the extracted data, a success message, or an error message) will be displayed in a "Test Result" box directly below the button.
+        * This allows you to quickly verify your configuration and see what data the plugin will attempt to fetch and display without needing to trigger the action on the Stream Deck key itself or wait for an update interval.
+        * This is particularly useful for debugging your response path or ensuring your headers and body are correctly formatted.
 
 ## Practical Examples
 
@@ -137,7 +142,7 @@ Here's a list of planned features and improvements:
 - [ ] Create a user-friendly key-value editor for headers (replace JSON textarea).
 - [ ] Add dedicated fields for common authorization tokens (Bearer, API Key).
 - [ ] Implement real-time input validation (URL format, JSON validity for headers/body).
-- [ ] Add a "Test Request" button in the Property Inspector for immediate feedback.
+- [x] Add a "Test Request" button in the Property Inspector for immediate feedback.
 - [ ] Implement profiles/presets to save and load common request configurations.
 
 ### Visual & Feedback Enhancements

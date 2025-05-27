@@ -52,6 +52,83 @@
 		title="Display a temporary green checkmark (✓) on the key after a manual press.">
 		<sdpi-checkbox setting="showOkOnPress" default="false"></sdpi-checkbox>
 	</sdpi-item>
+
+	<div class="sdpi-item">
+		<div class="sdpi-item-label"></div> <!-- Empty label for alignment -->
+		<div class="sdpi-item-value">
+			<button id="testRequestBtn" type="button" class="sdpi-button">Test Request</button>
+		</div>
+	</div>
+
+	<sdpi-item label="Test Result">
+		<div id="testResultOutput"
+			style="min-height: 40px; white-space: pre-wrap; word-break: break-all; background-color: var(--sdpi-textarea-bgcolor); border-radius: var(--sdpi-item-border-radius); padding: 5px; font-family: var(--sdpi-font-family); font-size: var(--sdpi-font-size);">
+		</div>
+	</sdpi-item>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        const testRequestBtn = document.getElementById('testRequestBtn');
+        const testResultOutput = document.getElementById('testResultOutput');
+
+        if (!testRequestBtn || !testResultOutput) {
+            console.error('Required PI elements (testRequestBtn or testResultOutput) not found.');
+            return;
+        }
+
+        testRequestBtn.addEventListener('click', () => {
+            testResultOutput.textContent = 'Testing...';
+            // Note: The payload for 'runTestRequest' is just an event name.
+            // The plugin side will pick up current PI settings.
+            const outgoingPayload = { event: 'runTestRequest' }; // This matches the example, though no actual data from PI is sent in this payload itself.
+
+            // Attempt to send message to plugin using modern Elgato tools or fallback
+            if (typeof ESDTools !== 'undefined' && typeof ESDTools.sendToPlugin === 'function') {
+                // For ESDTools.sendToPlugin, the 'action' parameter is the event name the plugin listens for.
+                // The 'context' is often the action's context, but can be null from PI if not specific to an instance.
+                // The plugin manifest defines the action UUID, which is different from this event name.
+                ESDTools.sendToPlugin(null, 'runTestRequest', outgoingPayload);
+            } else if (typeof window.sendToPlugin === 'function' && window.actionInfo && window.actionInfo.action) {
+                // window.sendToPlugin typically takes the action UUID (actionInfo.action) and the payload.
+                // The plugin side will then need to route based on payload.event or similar.
+                // To be consistent with the plugin's expected 'runTestRequest' custom event,
+                // we ensure the payload contains this information.
+                // The original instruction for window.sendToPlugin was:
+                // window.sendToPlugin(window.actionInfo.action, outgoingPayload);
+                // This sends the payload to the specific action instance. The plugin's onSendToPlugin
+                // for that action would receive it.
+                // Let's make sure the plugin can identify this specific request.
+                // The plugin side `streamDeck.on('sendToPlugin', ...)` or `action.onSendToPlugin`
+                // will receive this.
+                const payloadForPlugin = { ...outgoingPayload, action_uuid: window.actionInfo.action };
+                window.sendToPlugin(window.actionInfo.action, payloadForPlugin);
+
+
+            } else {
+                console.error('PI to Plugin communication method not found.');
+                testResultOutput.textContent = 'Error: Plugin communication failed.';
+            }
+        });
+
+        window.addEventListener('sendToPropertyInspector', (event) => {
+            // Check if the event and its details are what we expect
+            if (event.detail && event.detail.payload) {
+                const payload = event.detail.payload;
+                // Specifically look for 'testResult' in the payload
+                if (payload.testResult !== undefined) {
+                    const result = payload.testResult;
+                    if (typeof result === 'object') {
+                        testResultOutput.textContent = JSON.stringify(result, null, 2);
+                    } else {
+                        testResultOutput.textContent = String(result); // Ensure it is a string
+                    }
+                }
+                // Optional: handle other events if the plugin sends more types
+                // else if (payload.someOtherEvent) { ... }
+            }
+        });
+    });
+</script>
 </body>
 
 </html>

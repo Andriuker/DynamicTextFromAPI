@@ -55,6 +55,11 @@ Una vez instalado, encontrarás una nueva acción llamada **"HTTP Caller"** en l
     * **Update Interval (seconds):** El número de segundos entre cada ejecución automática de la petición. `0` deshabilita la actualización automática; la petición solo se ejecutará al presionar la tecla. Un intervalo mínimo recomendado suele ser 5-10 segundos para evitar límites de tasa (rate limiting).
     * **Enable Marquee for long text:** Marca esta casilla si quieres que los textos que excedan aproximadamente 10 caracteres se muestren con una animación de desplazamiento horizontal (marquesina).
     * **Show 'OK' on Press:** Marca esta casilla para ver una confirmación visual rápida (checkmark verde `✓`) en la tecla cada vez que la presiones manualmente.
+    * **Botón "Probar Petición":** Debajo de las opciones de configuración en el Inspector de Propiedades, encontrarás un botón "Probar Petición".
+        * Al hacer clic en este botón, se ejecutará inmediatamente la petición HTTP utilizando la configuración actual ingresada en los campos anteriores (URL, Método, Cabeceras, Cuerpo, Ruta de Respuesta).
+        * El resultado de esta petición de prueba (ya sea los datos extraídos, un mensaje de éxito o un mensaje de error) se mostrará en un cuadro de "Resultado de la Prueba" directamente debajo del botón.
+        * Esto te permite verificar rápidamente tu configuración y ver qué datos intentará obtener y mostrar el plugin sin necesidad de activar la acción en la tecla del Stream Deck o esperar un intervalo de actualización.
+        * Es particularmente útil para depurar tu ruta de respuesta o asegurar que tus cabeceras y cuerpo estén correctamente formateados.
 
 ## Ejemplos Prácticos
 
@@ -135,7 +140,7 @@ Si encuentras algún problema, tienes sugerencias o quieres contribuir, por favo
 - [ ] Crear un editor clave-valor amigable para las cabeceras (reemplazar textarea JSON).
 - [ ] Añadir campos dedicados para tokens de autorización comunes (Bearer, API Key).
 - [ ] Implementar validación de entradas en tiempo real (formato URL, validez JSON para cabeceras/cuerpo).
-- [ ] Añadir un botón "Probar Petición" en el Inspector de Propiedades para feedback inmediato.
+- [x] Añadir un botón "Probar Petición" en el Inspector de Propiedades para feedback inmediato.
 - [ ] Implementar perfiles/presets para guardar y cargar configuraciones comunes de peticiones.
 
 ### Mejoras Visuales y de Feedback
